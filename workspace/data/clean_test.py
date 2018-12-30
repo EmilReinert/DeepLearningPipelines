@@ -1,7 +1,9 @@
 """
 clean labled file taken from Motivation Example of Papaer
 """
-def test_clean(stack):
+
+
+def test_clean(stack): 
     x = 0
     while x < 10:
         y = 0
