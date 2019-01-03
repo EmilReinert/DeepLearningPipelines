@@ -1,0 +1,10 @@
+A deep tree based model for software defect prediction - Self Implementation
+
+
+Things that i noticed:
+- paper algorithm has most preprocesses within the LSTM Unit calculation
+	-> will be extracted and fit to our modules
+- ASTs are represented with only their root. i dont know if pyhton works the same
+- It is not certain how exactly their embedding of ASTs works: Their code suggests that they embed the nodes distinctive to their given names. But that doesnt make use of the AST sytax really
+	-> thats how i will process it for now but it might ignore important data?
+
