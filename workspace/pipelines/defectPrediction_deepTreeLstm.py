@@ -198,7 +198,7 @@ class PredictorLSTM:
         self.vec_length = len(embedding_matrix[0])
         # TODO LSTM tweaks
 
-    def tree_lstm(self, ast_node):
+    def tree_lstm(self, ast_node, depth=0):
         """
         Process of one LSTM unit.
         Recursively calls learning processes on all children in one tree
@@ -206,21 +206,22 @@ class PredictorLSTM:
         :param ast_node: one Python AST node; First call will be with root Node
         :returns: hidden state and context of node; eventually for the whole AST
         """
-        weight = 0  # TODO weights with lstm calculation!!
+        weight = torch.tensor([])  # TODO weights with lstm calculation!!
         w_t = ast2vec(ast_node, self.dictionary,
                       self.emb_matrix)  # embedding of tree
         # sum of children hidden outputs
-        h_ = [0]
+        h_ = 0
         # child hidden state
-        h_k = [0]
+        h_k = 0
         # context of child
-        c_k = [0]
+        c_k = 0
         # forget gates
         f_tk = 0
         # childrem forgetrates times the context
         c_ = 0
         for k in ast.iter_child_nodes(ast_node):
-            h_k, c_k = self.tree_lstm(k)
+            print(k, depth)
+            h_k, c_k = self.tree_lstm(k, depth+1)
             f_tk = torch.nn.Sigmoid()(weight)
             h_ += h_k
             c_ += (f_tk * c_k)
