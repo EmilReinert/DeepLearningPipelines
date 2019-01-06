@@ -3,7 +3,11 @@ import sys
 import re
 import ast  # for python AST respresentation
 import random
+from progress.bar import Bar
 import torch
+import torch.legacy.nn as nn
+# for binary tree LSTM model
+import modules.models.e_tree_lstm as etree
 
 
 def code2ast(code):
@@ -37,7 +41,7 @@ def to_camelcase(string):
 
 
 def read_file(path):
-    """ 
+    """
     reads file and returns it
     :param path: path to 2b-extracted file
     :return: string of file
@@ -62,7 +66,7 @@ def tidy(code):
     return code
 
 
-def create_dictionary(dataset, max_count):
+def create_dictionary(datasets, max_count):
     """
     Builds a fixed sized dictionary, with an <UNK> entry at last position
 
@@ -121,8 +125,10 @@ def create_dictionary(dataset, max_count):
         # print("maxcout", global_dict)
         return list(global_dict)
 
-    dictionary = extract_highest_occurences(dataset, max_count-1)
-    dictionary.append("UNK")
+    # running through dimensions
+    for dataset in datasets:
+        dictionary = extract_highest_occurences(dataset, max_count-1)
+        dictionary.append("UNK")
     return dictionary
 
 
@@ -147,9 +153,9 @@ def random_embed(dictionary, vector_length):
 
 def ast2vec(ast_node, dictionary, embed_matrix):
     """
-    embedding of single ast node 
+    embedding of single ast node
 
-    :param ast_token: 2b-embedded ast  ast_node 
+    :param ast_token: 2b-embedded ast  ast_node
     :param dictionary: dictionary of datatokens
     :param embed_matrix: embedding material
     :returns: vector representation of ast
@@ -182,23 +188,168 @@ def embed(datasets, dictionary, embed_matrix):
     return embedded_datasets
 
 
-class PredictorLSTM:
+class DefectPrediction:
     """
-    The actual NN Module for all learning and testing processes for DefectPrediction.
-    Will be able to do defect predictions for one file(one AST)
+    implementation Attemt to a published Paper:
+    'A deep tree-based model for software defect prediction'
+    Reference: https://arxiv.org/abs/1802.00921
+
+    TASK: Predicting Probability of a Code Being Defective or not
     """
 
-    def __init__(self, dictionary, embedding_matrix):
+    def __init__(self, data_defective, data_clean, data_test):
         """
-        :param dictionary: dictionary of datatokens
-        :param embed_matrix: embedding material
+        :param data_defective: path to datacorpus code labled as defective
+        :param data_clean: path to datacorpus code labled as clean
         """
-        self.dictionary = dictionary
-        self.emb_matrix = embedding_matrix
-        self.vec_length = len(embedding_matrix[0])
-        # TODO LSTM tweaks
+        self.raw_data_defective = data_defective
+        self.raw_data_clean = data_clean
+        self.raw_data_test = data_test
+        self.voc_size = 5
+        self.vec_length = 3
 
-    def tree_lstm(self, ast_node, depth=0):
+    def run(self):
+        """
+        runs whole Pipeline with already initialized defective and clean datasets
+        """
+    # PREPROCESSING ###########
+
+    # cleaning and opening files TODO manage datacorpus with lables and crawling
+        data_def = tidy(read_file(self.raw_data_defective))
+        data_cln = tidy(read_file(self.raw_data_clean))
+        data_test = tidy(read_file(self.raw_data_test))
+
+    # transforming file strings to AST and filling datasets
+        # parsing with own funciton ast_data_def_exp = code2ast(data_def) TODO manage error/empty files
+        # parsing with ast.parse
+        ast_data_def = []
+        ast_data_cln = []
+        ast_data_test = []
+        ast_data_def.append(ast.parse(data_test))
+        ast_data_cln.append(ast.parse(data_cln))
+        ast_data_test. append(ast.parse(data_test))
+
+        # prints
+        print("Defective Data AST:\n", ast.dump(ast_data_def[0]))
+        print("Clean Data AST:\n", ast.dump(ast_data_cln[0]))
+        print("Test Data AST:\n", ast.dump(ast_data_test[0]))
+
+    # vocabulary of highest occurences
+        self.dictionary = create_dictionary(
+            [ast_data_cln, ast_data_def], self.voc_size)  # TODO manage whole datastorage
+
+    # EMBEDDING ########### TODO learning?
+        # random embedding of dictionary; as initializing!
+        self.emb_matrix = random_embed(self.dictionary, self.vec_length)
+        print("Embedding Matrix:\n", self.emb_matrix)
+
+    # NEURAL NETWORK ########### TODO
+        # initializing model
+        model = NNSimulation(self)
+
+        # training parental predictin on clean data
+        model.train_datasets(ast_data_def, ast_data_cln)
+
+    # RESULTS ########### TODO
+    # testrun: Prediction
+        # obtaining hiddenstate and context of all trees(files) from training data
+        # h_root, c_root = DefectPredictor(self.dictionary, self.emb_matrix).predict(ast_data_test)
+
+
+class NNSimulation:
+    """
+    The actual NN Module training and testing processes for DefectPrediction.
+    with the help of a TreeLSTM it will be able to do defect predictions for one file(one AST)
+    """
+
+    def __init__(self, pipeline):
+        """
+        :param pipeline: holds all necessary information for nnsimulation
+        """
+        self.dictionary = pipeline.dictionary
+        self.emb_dim = len(pipeline.emb_matrix[0])
+        self.emb_matrix = nn.LookupTable(len(pipeline.emb_matrix), self.emb_dim)
+        self.emb_matrix.weight = pipeline.emb_matrix
+        # lstm properties
+        # memory dimension
+        self.mem_dim = 150
+        # learning rate
+        self.learning_rate = 0.05
+        # word vector embedding learning rate
+        self.emb_learning_rate = 0.0
+        # minibatch size
+        self.batch_size = 25
+        # regulation strength
+        self.reg = 1e-4
+        # simulation module hidden dimension
+        self.sim_nhidden = 50
+
+        # optimization configuration
+        self.optim_state = {self.learning_rate}
+
+        # negative log likeligood optimization objective
+        self.criterion = nn.ClassNLLCriterion()
+
+        # initialize model
+        self.etree_lstm = etree.ETreeLSTM(self)
+        try:
+            self.params, self.grad_params = self.etree_lstm._flatten(
+                self.etree_lstm.parameters())
+        except:
+            self.params = self.grad_params = torch.zeros(1)
+
+    def train_datasets(self, dataset_def, dataset_cln):
+        """
+        training for the TreeLSTM
+
+        trains upon clean datasets
+        TODO training on defective datasets
+        :param dataset_def: dataset containing defective asts
+        :param dataset_cln: dataset containing clean asts
+        """
+        self.train_clean(dataset_cln)
+
+    def train_clean(self, trees):
+        """
+        consists of 3 steps for a tree:
+            - recursively (from branch) walk over children and let them predict the parent node
+            - Compare the prediction with actual node
+            - adjust weights of model so that the difference is minimal
+        """
+        
+
+    def predict_parent(self, children):
+        """
+        predicting parent node based on child nodes
+        :param children: list of children nodes
+        :returns: most likely parent node
+        """
+        pass
+
+    def predict(self, tree):
+        """
+        predicting defectiveness of a file/tree
+        :param tree: 2b-evaluated abstract sytax tree
+        :returns: likelihood of defectiveness 0-1
+        """
+        pass
+
+    def predict_def_datasets(self, dataset_def, dataset_cln):
+        """
+        iterates over data and calculates the overall correctness of predictions
+        :param dataset_def: dataset containing defective asts
+        :param dataset_cln: dataset containing clean asts
+        :returns: overall precision of Network 0-1
+        """
+        pass
+
+############################
+    """
+    TODO delete the following functions when everything runs
+    theyre just here for some lookups but dont have any purpose
+    """
+
+    def lstm_unit(self, ast_node, depth=0):
         """
         Process of one LSTM unit.
         Recursively calls learning processes on all children in one tree
@@ -221,7 +372,7 @@ class PredictorLSTM:
         c_ = 0
         for k in ast.iter_child_nodes(ast_node):
             print(k, depth)
-            h_k, c_k = self.tree_lstm(k, depth+1)
+            h_k, c_k = self.lstm_unit(k, depth+1)
             f_tk = torch.nn.Sigmoid()(weight)
             h_ += h_k
             c_ += (f_tk * c_k)
@@ -237,69 +388,23 @@ class PredictorLSTM:
 
         return h_t, c_t
 
-
-class DefectPrediction:
-    """
-    implementation Attemt to a published Paper: 
-    'A deep tree-based model for software defect prediction' 
-    Reference: https://arxiv.org/abs/1802.00921
-
-    TASK: Predicting Probability of a Code Being Defective or not
-    """
-
-    def __init__(self, data_defective, data_clean, data_test):
+    def train_clean_trash(self, trees):
         """
-        :param data_defective: path to datacorpus code labled as defective
-        :param data_clean: path to datacorpus code labled as clean
+        consists of 3 steps for a tree:
+            - recursively (from branch) walk over children and let them predict the parent node
+            - Compare the prediction with actual node
+            - adjust weights of model so that the difference is minimal
         """
-        self.data_defective = data_defective
-        self.data_clean = data_clean
-        self.data_test = data_test
-        self.voc_size = 5
-        self.vec_length = 3
+        bar = Bar('Training', max=len(trees))
+        self.etree_lstm.train = True
+        indices = torch.randperm(len(trees))
+        zeros = torch.zeros(self.mem_dim)
+        for i in range(1, len(trees)+1, self.batch_size):
+            bar.next()  # printing progress
+            batch_size = min(i+self.batch_size - 1, len(trees))-i+1
 
-    def run(self):
-        """
-        runs whole Pipeline with already initialized defective and clean datasets
-        """
-    # PREPROCESSING ###########
+            def f_eval():
+                pass
 
-    # cleaning and opening files TODO manage datacorpus with lables and crawling
-        data_def = tidy(read_file(self.data_defective))
-        data_cln = tidy(read_file(self.data_clean))
-        data_test = tidy(read_file(self.data_test))
-
-    # transforming file strings to AST
-        # parsing with own funciton ast_data_def_exp = code2ast(data_def) TODO manage error/empty files
-        # parsing with ast.parse
-        ast_data_def = ast.parse(data_def)
-        ast_data_cln = ast.parse(data_cln)
-        ast_data_test = ast.parse(data_test)
-
-        # prints
-        print("Defective Data AST:\n", ast.dump(ast_data_def))
-        print("Clean Data AST:\n", ast.dump(ast_data_cln))
-        print("Test Data AST:\n", ast.dump(ast_data_test))
-
-    # vocabulary of highest occurences
-        self.dictionary = create_dictionary(
-            [ast_data_cln, ast_data_def], self.voc_size)  # TODO manage whole datastorage
-
-    # EMBEDDING ########### TODO learning?
-        # random embedding of dictionary; as initializing!
-        self.emb_matrix = random_embed(self.dictionary, self.vec_length)
-        # print("Embedding Matrix:\n", self.emb_matrix)
-
-        # embed datasets
-        # TODO: is embedding the whole datasets suitable or modificable for this paper?
-        def_emb, cln_emb = embed(
-            [ast_data_def, ast_data_cln], self.dictionary, self.emb_matrix)
-        # print("Embedded Defective Data:\n", def_emb)
-        # print("Embedded Clean Data:\n", cln_emb)
-
-    # NEURAL NETWORK ########### TODO
-        # obtaining hiddenstate and context of all trees(files) from training data
-        self.predictor = PredictorLSTM(self.dictionary, self.emb_matrix)
-        h_root, c_root = self.predictor.tree_lstm(ast_data_test)
-
-    # RESULTS ########### TODO
+            # torch.optim.Adagrad(self.params, self.optim_state)
+        bar.finish()

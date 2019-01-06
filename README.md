@@ -1,6 +1,6 @@
 # DeepLearningPipelines
 
-This is a really experimental Repository in cooperation with a 'Deep Learning for Code Generation' project, that tries to consist of referenced and self constructed Code Generation Tasks.
+This is a really experimental Repository in cooperation with a 'Deep Learning for Code Generation' project, that tries to consist of referenced and self-constructed Code Generation Tasks, written in Python3.
 
 
 ## Structure
@@ -17,7 +17,7 @@ and separated into its core-processes in 'modules'
 
 - **Prediction of semantic relatedness of two sentence &**
 - **Sentiment Classification with Tree-Structured LSTM:**
-	Module extraction and adaptation of
+	Python Adaptation and Module Extraction of
 	'Improved Semantic Representations From Tree-Structured Long Short-Term Memory Networks'
 	-> https://arxiv.org/abs/1503.00075
 	An already public implementation can be found here: https://github.com/stanfordnlp/treelstm

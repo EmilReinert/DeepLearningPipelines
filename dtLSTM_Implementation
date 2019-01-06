@@ -1,10 +1,48 @@
+Progress Documentation:
+
+
+
 A deep tree based model for software defect prediction - Self Implementation
 
-
-Things that i noticed:
 - paper algorithm has most preprocesses within the LSTM Unit calculation
 	-> will be extracted and fit to our modules
-- ASTs are represented with only their root. i dont know if pyhton works the same
 - It is not certain how exactly their embedding of ASTs works: Their code suggests that they embed the nodes distinctive to their given names. But that doesnt make use of the AST sytax really
 	-> thats how i will process it for now but it might ignore important data?
+- tree implementation will help here but LSTM unit processes will have to be adjusted (ETreeLSTM)
 
+- PROBLEM: Everything regarding the parent prediction makes sense:
+	We train on clean data to see which ast child-parent configurations are the most common.
+		That is done by iterating over Asts starting from the branches, predicting parent from children
+		(and context) and adjusting the weights based on the diffrenece of prediction and outcome
+	The resulting, trained network is then used to recurisively iterate over ast nodes and doing some
+	LSTM Processes on each node, to obtain a vector which is then classified(?)
+	BUT:
+	- Now how is defective data used?
+	- How does training and predicting differenciate?
+	- How do we instanciate and train the classification process
+=> In order to understand the overall Funktionality of the paper I wont let myself get confused with LUA TreeLSTM and will adapt the NN to a dummy RNN and extend it later
+	
+Future Steps:
+1. Include dummy RNN
+2. Adjust Basic Training and Predicting
+3. Expand Data Crawling and management (PROMISE Dataset)
+4. Include TreeLSTM
+5. Manage Embedding Training
+
+
+Improved Semantic Representations From Tree-Structured Long Short-Term Memory Networks - Reference Implemenations
+
+- The Library consitsts of two Tasks:
+	semantic relatedness | sentiment classification
+
+  and can make use of 4 nn models, where only treelstm is interesting:
+	(LSTM(Normal, bidirected) and TreeLSTM(childsum and n-ary))
+
+- They have two different Tree Algorithms, both probably have to be adapted for defect prediction:
+	- ChildSumTree: 
+	- N-ary Tree LSTM:
+		'can be used on tree structures where the branching factor 
+		is at most N and where children are ordered'
+	-> I dont really understand which has a better/suitable functionality so ill combine them?
+
+- The Tasks don't especially fit to the Defect Prediction model; Nonetheless the label classification process from the sentiment classification might suffice for its training process
