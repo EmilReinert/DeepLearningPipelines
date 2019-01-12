@@ -6,8 +6,9 @@ import random
 from progress.bar import Bar
 import torch
 import torch.legacy.nn as nn
-# for binary tree LSTM model
+# for childsum tree LSTM model
 import modules.models.e_tree_lstm as etree
+import modules.models.rnn_example as rnn
 
 
 def code2ast(code):
@@ -93,10 +94,11 @@ def create_dictionary(datasets, max_count):
             for ast_node in ast.walk(tree):
                 # if word not in the local dictionary then we add it
                 # otherwise we rise count
-                if ast_node in local_dict:
-                    local_dict[ast_node] += 1
+                node = ast_node.__class__.__name__
+                if node in local_dict:
+                    local_dict[node] += 1
                 else:
-                    local_dict[ast_node] = 1
+                    local_dict[node] = 1
             # local dict counts will now be merged into fix sized, global dictionary
             for ast_node in local_dict:
                 if ast_node in global_dict:
@@ -113,7 +115,7 @@ def create_dictionary(datasets, max_count):
             # now we create an updated highest count global dict
             new_global_dict = {}
             while len(new_global_dict) < max_count:
-                if highest_count < 1:
+                if highest_count < 1 or len(new_global_dict) >= 2*len(global_dict):
                     break
                 # filling new global
                 for ast_node in global_dict:
@@ -172,7 +174,7 @@ def ast2vec(ast_node, dictionary, embed_matrix):
 
 def embed(datasets, dictionary, embed_matrix):
     """
-    embedding of ast datasets with dictionary and embedding matrix
+    embedding for 2 dimensional list containing ast node names
 
     :param dataset: tokenized list, optionally n dimensional
     :param dictionary: dictionary of datatokens
@@ -180,15 +182,59 @@ def embed(datasets, dictionary, embed_matrix):
     :returns: vector representation of datafiles
     """
     embedded_datasets = []
-    for tree in datasets:
+    for nodes in datasets:
         embedded_data = []
-        for ast_node in ast.walk(tree):
-            embedded_data.append(ast2vec(ast_node, dictionary, embed_matrix))
+        for node in nodes:
+            embedded_data.append(ast2vec(node, dictionary, embed_matrix))
         embedded_datasets.append(embedded_data)
     return embedded_datasets
 
 
-class DefectPrediction:
+def prepare_in_out(datasets):
+    """
+    TODO this works without context now because we use standard LSTM
+         that must be changed/deleted later and be processed in the tree LSTM
+    creates all traing/testing/validation data in and outputs for NN
+    :param datasets: list containing ASTs
+    :retuns: 2 dimensional list that holds list of all children for parent at same index
+             -> for all datasets
+    """
+    def parents_children(tree):
+        """
+        extracts all parents with its children from given AST
+        :param tree: 2b-extracted python AST
+        :returns: 2 lists that represent list of all children for parent at same index
+        """
+        parents = []
+        children = []
+        for node in ast.walk(tree):
+            loc_children = []
+            loc_children_ast = ast.iter_child_nodes(node)
+            # test if node is branch, if yes then its ignored
+            for child_ast in loc_children_ast:
+                loc_children.append(child_ast.__class__.__name__)
+            if not len(loc_children) == 0:
+                parents.append(node.__class__.__name__)
+
+                # make children list sized 5 so it works with lstm fix input length
+                # im sorry for everyone who has to see this
+                while len(loc_children) < 5:
+                    loc_children.append("")
+
+                children.append(loc_children)
+
+        return [parents, children]
+    # collect parent children pairs first
+    all_parents = []
+    all_children = []
+    for tree in datasets:
+        parents, chilren = parents_children(tree)
+        all_parents.extend(parents)
+        all_children.extend(chilren)
+    return [all_parents, all_children]
+
+
+class DefectPrediction:  # main pipeline
     """
     implementation Attemt to a published Paper:
     'A deep tree-based model for software defect prediction'
@@ -205,7 +251,8 @@ class DefectPrediction:
         self.raw_data_defective = data_defective
         self.raw_data_clean = data_clean
         self.raw_data_test = data_test
-        self.voc_size = 5
+        # vocabulary/dictionary size
+        self.voc_size = 100
         self.vec_length = 3
 
     def run(self):
@@ -214,41 +261,53 @@ class DefectPrediction:
         """
     # PREPROCESSING ###########
 
-    # cleaning and opening files TODO manage datacorpus with lables and crawling
+        # cleaning and opening files TODO manage datacorpus with lables and crawling
         data_def = tidy(read_file(self.raw_data_defective))
         data_cln = tidy(read_file(self.raw_data_clean))
         data_test = tidy(read_file(self.raw_data_test))
 
-    # transforming file strings to AST and filling datasets
+        # transforming file strings to AST and filling datasets
         # parsing with own funciton ast_data_def_exp = code2ast(data_def) TODO manage error/empty files
         # parsing with ast.parse
         ast_data_def = []
         ast_data_cln = []
         ast_data_test = []
-        ast_data_def.append(ast.parse(data_test))
+        ast_data_def.append(ast.parse(data_def))
         ast_data_cln.append(ast.parse(data_cln))
         ast_data_test. append(ast.parse(data_test))
 
-        # prints
+        # print ast data
         print("Defective Data AST:\n", ast.dump(ast_data_def[0]))
         print("Clean Data AST:\n", ast.dump(ast_data_cln[0]))
         print("Test Data AST:\n", ast.dump(ast_data_test[0]))
 
-    # vocabulary of highest occurences
+        # vocabulary of highest occurences
         self.dictionary = create_dictionary(
             [ast_data_cln, ast_data_def], self.voc_size)  # TODO manage whole datastorage
+        print("Dictionary:\n", self.dictionary)
+
+        # preparing in and outputs for neural network
+        train_in_out = prepare_in_out(ast_data_def)
+        test_in_out = prepare_in_out(ast_data_test)
+        print("Training IN OUT:\n", train_in_out)
+        print("Testin IN OUT:\n", test_in_out)
 
     # EMBEDDING ########### TODO learning?
         # random embedding of dictionary; as initializing!
         self.emb_matrix = random_embed(self.dictionary, self.vec_length)
-        print("Embedding Matrix:\n", self.emb_matrix)
+        # print("Embedding Matrix:\n", self.emb_matrix)
+
+        # embedding of datasets
+        emb_train = embed(train_in_out, self.dictionary, self.emb_matrix)
+        print("Embedded Training IN OUT:\n", emb_train)
+        emb_test = embed(test_in_out, self.dictionary, self.emb_matrix)
 
     # NEURAL NETWORK ########### TODO
         # initializing model
         model = NNSimulation(self)
 
         # training parental predictin on clean data
-        model.train_datasets(ast_data_def, ast_data_cln)
+        model.run(emb_train, emb_test)
 
     # RESULTS ########### TODO
     # testrun: Prediction
@@ -266,9 +325,13 @@ class NNSimulation:
         """
         :param pipeline: holds all necessary information for nnsimulation
         """
+        # global dictionary
         self.dictionary = pipeline.dictionary
+        # vector length
         self.emb_dim = len(pipeline.emb_matrix[0])
-        self.emb_matrix = nn.LookupTable(len(pipeline.emb_matrix), self.emb_dim)
+        # embedding matrix as lookup table
+        self.emb_matrix = nn.LookupTable(
+            len(pipeline.emb_matrix), self.emb_dim)
         self.emb_matrix.weight = pipeline.emb_matrix
         # lstm properties
         # memory dimension
@@ -291,12 +354,22 @@ class NNSimulation:
         self.criterion = nn.ClassNLLCriterion()
 
         # initialize model
+        self.lstm = rnn.RNN_Example(self)
+        '''
         self.etree_lstm = etree.ETreeLSTM(self)
         try:
             self.params, self.grad_params = self.etree_lstm._flatten(
                 self.etree_lstm.parameters())
         except:
             self.params = self.grad_params = torch.zeros(1)
+        '''
+
+    def run(self, train, test):
+        """
+        temporary run for RNN; calls run function of RNN
+        TODO delete when TreeLSTM is included
+        """
+        self.lstm.run(train, test)
 
     def train_datasets(self, dataset_def, dataset_cln):
         """
@@ -316,7 +389,6 @@ class NNSimulation:
             - Compare the prediction with actual node
             - adjust weights of model so that the difference is minimal
         """
-        
 
     def predict_parent(self, children):
         """

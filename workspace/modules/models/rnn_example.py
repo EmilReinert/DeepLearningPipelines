@@ -12,27 +12,26 @@ from torch.utils.data import DataLoader
 class RNN_Example():
     """
     Implementation of Recurrent Neural Network.
+    For Emils Pipeline Implementation
     """
+
     def __init__(self, config):
         self.dict = config.dictionary
         self.batch_size = config.batch_size
-        self.epochs = config.epochs
-        self.input_length = config.input_length
-        self.output_length = config.output_length
-        self.dict_size = config.dict_size
-        self.saved_path = config.saved_path
-        # save best model
-        if not os.path.isdir(self.saved_path):
-            os.makedirs(self.saved_path)
+        self.epochs = 10
+        self.input_length = 5  # TODO
+        self.output_length = 1
+        self.dict_size = len(self.dict)
+        self.saved_path = "/home/emil/Documents/DeepLearningProject/PaperImplementation/DeepLearningPipelines/workspace/dump"
         self.saved_file = os.path.join(self.saved_path, "best_trained_model")
         # TODO: current model not taking sequences of token, only 1 token
 
-    def run(self, datasets):
-        
-        self.train_network(datasets)
+    def run(self, train, test):
+
+        self.train_network(train, test)
         return list(self.predict_testing_output.numpy())
 
-    def train_network(self, datasets):
+    def train_network(self, train, test):
         """
         Train network.
 
@@ -45,13 +44,14 @@ class RNN_Example():
         :param datasets: list of input/output sets,
         :returns: none
         """
-
-        training_input = datasets[0]
-        training_output = datasets[1]
-        validating_input = datasets[2]
-        validating_output = datasets[3]
-        testing_input = datasets[4]
-        testing_output = datasets[5]
+        # Training and Testing data will look like a 2 dim array
+        # where each index holds corresponding in [0] to output [1]
+        training_input = train[1][0]
+        training_output = train[0][0]
+        validating_input = training_input
+        validating_output = training_output
+        testing_input = test[1][0]
+        testing_output = test[0][0]
 
         # Used to compare with accuracy of model
         best_accuracy = 0.0
@@ -73,7 +73,7 @@ class RNN_Example():
         valid_loader = DataLoader(valid_data, **params)
         test_loader = DataLoader(test_data, **params)
 
-        model = RNN(training_data=datasets[0], dict_size=self.dict_size)
+        model = RNN(training_data=training_input, dict_size=self.dict_size)
 
         # Check if computer have graphic card,
         # model will be trained py GPU instead of CPU
@@ -123,7 +123,12 @@ class RNN_Example():
                 epoch=epoch,
                 best_accuracy=best_accuracy)
 
-        model.load_state_dict(torch.load(self.saved_file))
+        try:
+            model.load_state_dict(torch.load(self.saved_file))
+        except:
+            FileNotFoundError
+            print("can't save best model because there is none")
+
         self.access_model(model=model,
                           data_loader=test_loader,
                           access_data=test_data,
@@ -182,12 +187,14 @@ class RNN_Example():
         loss = sum(loss_list) / access_data.__len__()
         accuracy = sum(accuracy_list) / access_data.__len__()
 
-        loss = np.around(loss[0].numpy(),decimals=3)
+        loss = np.around(loss, decimals=3)
         if mode == "validate":
-            print("Epoch ",epoch+1,"/",self.epochs,". Validation Loss: ",loss," Validation Accuracy: ",np.around(accuracy,decimals=3))
+            print("Epoch ", epoch+1, "/", self.epochs, ". Validation Loss: ",
+                  loss, " Validation Accuracy: ", np.around(accuracy, decimals=3))
 
         if mode == "test":
-            print("Best Model. Loss: ",loss," Accuracy: ",np.around(accuracy,decimals=3))
+            print("Best Model. Loss: ", loss, " Accuracy: ",
+                  np.around(accuracy, decimals=3))
 
 
 def get_accuracy(prediction, actual_value, dict):
