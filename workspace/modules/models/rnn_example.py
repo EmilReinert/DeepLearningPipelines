@@ -83,13 +83,13 @@ class RNN_Example():
             model.cuda()
 
         # Loss function
-        criterion = nn.CrossEntropyLoss()
+        self.criterion = nn.CrossEntropyLoss()
 
         # Optimization
         optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
 
         # Number of iteration ( = length of data / batch_size)
-        num_iter = int(train_data.__len__()/self.batch_size)
+        self.num_iter = int(train_data.__len__()/self.batch_size)
 
         for epoch in range(self.epochs):
             # Declare to start training phase
@@ -106,7 +106,7 @@ class RNN_Example():
                 predicted_value = model(content)
 
                 # Calculating loss
-                loss = criterion(predicted_value, label)
+                loss = self.criterion(predicted_value, label)
 
                 # Back propagation
                 loss.backward()
@@ -120,8 +120,8 @@ class RNN_Example():
                 model=model,
                 data_loader=test_loader,
                 access_data=test_data,
-                criterion=criterion,
-                num_iter=num_iter,
+                criterion=self.criterion,
+                num_iter=self.num_iter,
                 epoch=epoch,
                 best_accuracy=best_accuracy)
 
@@ -134,9 +134,37 @@ class RNN_Example():
         self.access_model(model=model,
                           data_loader=test_loader,
                           access_data=test_data,
-                          criterion=criterion,
+                          criterion=self.criterion,
                           mode="test",
-                          num_iter=num_iter)
+                          num_iter=self.num_iter)
+
+    def test_network(self, test_data):
+        """
+        separated training of
+        :param test_data: data 2b tested with current/best model
+        :returns: accuracy
+        """
+        params = {
+            "batch_size":   self.batch_size,
+            "shuffle": True,
+            "drop_last": True
+        }
+        test_loader = DataLoader(test_data, **params)
+
+        try:
+            best_model = RNN([], self.dict_size)
+            best_model.load_state_dict(torch.load(self.saved_file))
+        except:
+            FileNotFoundError
+            print("can't save best model because there is none")
+
+        accuracy = self.access_model(model=best_model,
+                                     data_loader=test_loader,
+                                     access_data=test_data,
+                                     criterion=self.criterion,
+                                     mode="test",
+                                     num_iter=self.num_iter)
+        return np.around(accuracy, decimals=3)
 
     def access_model(self, model, data_loader, access_data, criterion,
                      num_iter, mode="validate", epoch=0, best_accuracy=0.0):
@@ -195,8 +223,10 @@ class RNN_Example():
                   loss, " Validation Accuracy: ", np.around(accuracy, decimals=3))
 
         if mode == "test":
-            print("Best Model. Loss: ", loss, " Accuracy: ",
-                  np.around(accuracy, decimals=3))
+            raccuracy = np.around(accuracy, decimals=3)
+            print("Best Model. Loss: ", loss, " Accuracy: ", raccuracy)
+            # for defectiveness prediction
+        return accuracy
 
 
 def get_accuracy(prediction, actual_value, dict):
