@@ -6,11 +6,13 @@ A deep tree based model for software defect prediction - Self Implementation
 
 - paper algorithm has most preprocesses within the LSTM Unit calculation
 	-> will be extracted and fit to our modules
-- It is not certain how exactly their embedding of ASTs works: Their code suggests that they embed the nodes distinctive to their given names. But that doesnt make use of the AST sytax really
+- data is not being embedded beforehand but rather makes use of an embedding matrix that is used within the NN processes in oder to look up the vectors
+	-> The embedding is only for the actual node names and doesnt represent any AST build
 	-> thats how i will process it for now but it might ignore important data?
-- tree implementation will help here but LSTM unit processes will have to be adjusted (ETreeLSTM)
+- tree implementation will help here but LSTM unit processes will have to be adjusted (DefectTreeLSTM)
 
-- PROBLEM: Everything regarding the parent prediction makes sense:
+- internal PROBLEMS:
+	Everything regarding the parent prediction makes sense:
 	We train on clean data to see which ast child-parent configurations are the most common.
 		That is done by iterating over Asts starting from the branches, predicting parent from children
 		(and context) and adjusting the weights based on the diffrenece of prediction and outcome
@@ -20,7 +22,15 @@ A deep tree based model for software defect prediction - Self Implementation
 	- Now how is defective data used?
 	- How does training and predicting differenciate?
 	- How do we instanciate and train the classification process
-=> In order to understand the overall Funktionality of the paper I wont let myself get confused with LUA TreeLSTM and will adapt the NN to a dummy RNN and extend it later
+
+- Paper Documentation PROBLEMS:
+	- The actual defect prediction learning is not explained
+	- Defect Prediction Algorithm doesnt say a lot about what it does
+	- What TreeLSTM is actually used and how is it modified?? (ChildSum)
+	- What is a vector representation of an AST, how can one obtain it, what does it actually stand for?
+
+
+=> In order to understand the overall Functionality of the paper LUA TreeLSTM will be put aside for now, so the NN process will be simulated by an RNN and extended lateron
 	
 Future Steps:
 1. Include dummy RNN
@@ -29,7 +39,18 @@ Future Steps:
 4. Include TreeLSTM
 5. Manage Embedding Training
 
+Explicit Steps/Comments:
+- Defect Prediction done like the training, i.e. all child nodes of an AST are being input into the lstm and the each parent node is being predicted.
+	+ Defect Prediction now becomes basically the accuracy calculation of test data
+	+/- This process is now directly connected to the accuracy of the LSTM 
+- Defective Data will be used as a way of finding the threshold between the accuracy/def-probability 
+	- Threshold might be inaccurate
 
+
+
+
+
+----------------------------------------------------------------------------
 Improved Semantic Representations From Tree-Structured Long Short-Term Memory Networks - Reference Implemenations
 
 - The Library consitsts of two Tasks:
