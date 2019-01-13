@@ -11,36 +11,6 @@ import modules.models.e_tree_lstm as etree
 import modules.models.rnn_example as rnn
 
 
-def code2ast(code):
-    """
-    Recursively Parses Code into python AST
-    Reference: https://github.com/caterinaurban/Lyra/blob/master/src/lyra/visualization/ast_visualizer.py
-
-    :param code: string representation of to-be-processed code
-    :return: dict-AST representation of code
-    """
-    def transform_ast(code_ast):
-        if isinstance(code_ast, ast.AST):
-            ast_node = {to_camelcase(k): transform_ast(
-                getattr(code_ast, k)) for k in code_ast._fields}
-            ast_node['node_type'] = to_camelcase(code_ast.__class__.__name__)
-            return ast_node
-        elif isinstance(code_ast, list):
-            return [transform_ast(el) for el in code_ast]
-        else:
-            return code_ast
-    return transform_ast(ast.parse(code))
-
-
-def to_camelcase(string):
-    """
-    converts string to camelcase
-    :param string: any string that will be transformed accordingly
-    :return: camelcase string of input
-    """
-    return re.sub('([a-z0-9])([A-Z])', r'\1_\2', string).lower()
-
-
 def read_file(path):
     """
     reads file and returns it
@@ -134,6 +104,15 @@ def create_dictionary(datasets, max_count):
     return dictionary
 
 
+def truncate(f, n):
+    '''Truncates/pads a float f to n decimal places without rounding'''
+    s = '{}'.format(f)
+    if 'e' in s or 'E' in s:
+        return '{0:.{1}f}'.format(f, n)
+    i, p, d = s.partition('.')
+    return '.'.join([i, (d+'0'*n)[:n]])
+
+
 def random_embed(dictionary, vector_length):
     """
     embeds dictionary with random valued vectors for initializing random weights.
@@ -148,7 +127,7 @@ def random_embed(dictionary, vector_length):
     for mi in range(len(dictionary)):
         e_vec = []
         for vi in range(vector_length):
-            e_vec.append(random.uniform(-1.0, 1.0))
+            e_vec.append(truncate(random.uniform(-1.0, 1.0), 2))
         e_mat.append(e_vec)
     return e_mat
 
@@ -170,68 +149,6 @@ def ast2vec(ast_node, dictionary, embed_matrix):
         index = len(dictionary)-1
     # lookup index in embedding matrix
     return embed_matrix[index]
-
-
-def embed(datasets, dictionary, embed_matrix):
-    """
-    embedding for 2 dimensional list containing ast node names
-
-    :param dataset: tokenized list, optionally n dimensional
-    :param dictionary: dictionary of datatokens
-    :param embed_matrix: embedding material
-    :returns: vector representation of datafiles
-    """
-    embedded_datasets = []
-    for nodes in datasets:
-        embedded_data = []
-        for node in nodes:
-            embedded_data.append(ast2vec(node, dictionary, embed_matrix))
-        embedded_datasets.append(embedded_data)
-    return embedded_datasets
-
-
-def prepare_in_out(datasets):
-    """
-    TODO this works without context now because we use standard LSTM
-         that must be changed/deleted later and be processed in the tree LSTM
-    creates all traing/testing/validation data in and outputs for NN
-    :param datasets: list containing ASTs
-    :retuns: 2 dimensional list that holds list of all children for parent at same index
-             -> for all datasets
-    """
-    def parents_children(tree):
-        """
-        extracts all parents with its children from given AST
-        :param tree: 2b-extracted python AST
-        :returns: 2 lists that represent list of all children for parent at same index
-        """
-        parents = []
-        children = []
-        for node in ast.walk(tree):
-            loc_children = []
-            loc_children_ast = ast.iter_child_nodes(node)
-            # test if node is branch, if yes then its ignored
-            for child_ast in loc_children_ast:
-                loc_children.append(child_ast.__class__.__name__)
-            if not len(loc_children) == 0:
-                parents.append(node.__class__.__name__)
-
-                # make children list sized 5 so it works with lstm fix input length
-                # im sorry for everyone who has to see this
-                while len(loc_children) < 5:
-                    loc_children.append("")
-
-                children.append(loc_children)
-
-        return [parents, children]
-    # collect parent children pairs first
-    all_parents = []
-    all_children = []
-    for tree in datasets:
-        parents, chilren = parents_children(tree)
-        all_parents.extend(parents)
-        all_children.extend(chilren)
-    return [all_parents, all_children]
 
 
 class DefectPrediction:  # main pipeline
@@ -277,8 +194,8 @@ class DefectPrediction:  # main pipeline
         ast_data_test. append(ast.parse(data_test))
 
         # print ast data
-        print("Defective Data AST:\n", ast.dump(ast_data_def[0]))
-        print("Clean Data AST:\n", ast.dump(ast_data_cln[0]))
+        #("Defective Data AST:\n", ast.dump(ast_data_def[0]))
+        #print("Clean Data AST:\n", ast.dump(ast_data_cln[0]))
         print("Test Data AST:\n", ast.dump(ast_data_test[0]))
 
         # vocabulary of highest occurences
@@ -286,39 +203,30 @@ class DefectPrediction:  # main pipeline
             [ast_data_cln, ast_data_def], self.voc_size)  # TODO manage whole datastorage
         print("Dictionary:\n", self.dictionary)
 
-        # preparing in and outputs for neural network
-        train_in_out = prepare_in_out(ast_data_def)
-        test_in_out = prepare_in_out(ast_data_test)
-        print("Training IN OUT:\n", train_in_out)
-        print("Testin IN OUT:\n", test_in_out)
-
     # EMBEDDING ########### TODO learning?
         # random embedding of dictionary; as initializing!
         self.emb_matrix = random_embed(self.dictionary, self.vec_length)
         # print("Embedding Matrix:\n", self.emb_matrix)
 
-        # embedding of datasets
-        emb_train = embed(train_in_out, self.dictionary, self.emb_matrix)
-        print("Embedded Training IN OUT:\n", emb_train)
-        emb_test = embed(test_in_out, self.dictionary, self.emb_matrix)
-
     # NEURAL NETWORK ########### TODO
         # initializing model
-        model = NNSimulation(self)
+        model = RNNDefect(self)
 
-        # training parental predictin on clean data
-        model.run(emb_train, emb_test)
+        # training parental predictin on clean data (test is also used for general testing)
+        model.train_datasets(ast_data_def, ast_data_cln, ast_data_test)
 
+        # predicting defectiveness of test data
     # RESULTS ########### TODO
     # testrun: Prediction
         # obtaining hiddenstate and context of all trees(files) from training data
         # h_root, c_root = DefectPredictor(self.dictionary, self.emb_matrix).predict(ast_data_test)
 
 
-class NNSimulation:
+class RNNDefect():
     """
-    The actual NN Module training and testing processes for DefectPrediction.
-    with the help of a TreeLSTM it will be able to do defect predictions for one file(one AST)
+    temporary RNN Neural network for processes of Defect prediction.
+    Its use is to understand the core processes of the Defect prediction Task
+    -> that is archieved by adjusting the processes that are meant for the treelstm
     """
 
     def __init__(self, pipeline):
@@ -329,10 +237,14 @@ class NNSimulation:
         self.dictionary = pipeline.dictionary
         # vector length
         self.emb_dim = len(pipeline.emb_matrix[0])
+        self.emb_matrix = pipeline.emb_matrix
         # embedding matrix as lookup table
-        self.emb_matrix = nn.LookupTable(
+        self.emb_matrix_look = nn.LookupTable(
             len(pipeline.emb_matrix), self.emb_dim)
-        self.emb_matrix.weight = pipeline.emb_matrix
+        self.emb_matrix_look.weight = self.emb_matrix
+        # length of input sequence for RNN
+        self.in_len = 3
+
         # lstm properties
         # memory dimension
         self.mem_dim = 150
@@ -355,6 +267,155 @@ class NNSimulation:
 
         # initialize model
         self.lstm = rnn.RNN_Example(self)
+
+    def train_datasets(self, dataset_def, dataset_cln, test_cln):
+        """
+        training for RNN
+        trains upon clean datasets
+        TODO training on defective datasets?
+        :param dataset_def: dataset containing defective asts
+        :param dataset_cln: dataset containing clean asts
+        :param test_cln: dataset containing clean test asts
+        """
+        self.train_clean(dataset_cln, test_cln)
+
+    def train_clean(self, dataset_cln, test_cln):
+        """
+        trains and tests RNN with clean datafiles
+
+        :param dataset_cln: dataset containing clean training asts
+        :param test_cln: dataset containing clean test asts
+        :returns: void; saves best model in folder
+
+        TODO delete/adjust when made use of TreeLSTM
+        """
+        # preparing in and outputs for neural network
+        train_in_out = self.prepare_in_out(dataset_cln)
+        test_in_out = self.prepare_in_out(test_cln)
+        print("Training IN OUT:\n", train_in_out)
+        # print("Testin IN OUT:\n", test_in_out)
+
+        # embedding of datasets | Makes only sense for RNN because we loose context
+        emb_train = self.embed(train_in_out)
+        # print("Embedded Training IN OUT\n", emb_train)
+        emb_test = self.embed(test_in_out)
+        self.lstm.run(emb_train, emb_test)
+
+    def embed(self, datasets):
+        """
+        embedding for 2 dimensional list containing ast node names
+        of parents in [0] and children in [1]
+
+        :param dataset: tokenized list, optionally n dimensional
+        :param dictionary: dictionary of datatokens
+        :param embed_matrix: embedding material
+        :returns: vector representation of datafiles
+        """
+        embedded_datasets = []
+        parents = []
+        for parent in datasets[0]:
+            parents.append(ast2vec(
+                parent, self.dictionary, self.emb_matrix))
+        # print(parents)
+        embedded_datasets.append(parents)
+        all_children = []
+        for children in datasets[1]:
+            embedded_children = []
+            for child in children:
+                # creating combined vector of children vec values
+                # im sorry for everyone who has to see this code
+                embedded_children.append(ast2vec(
+                    child, self.dictionary, self.emb_matrix))
+            all_children.append(embedded_children)
+        embedded_datasets.append(all_children)
+        return embedded_datasets
+
+    def prepare_in_out(self, datasets):
+        """
+        creates all traing/testing/validation data in and outputs for NN
+        :param datasets: list containing ASTs
+        :retuns: 2 dimensional list that holds list of all children for parent at same index
+                -> for all datasets
+        TODO this works without lstmcontext now because we use standard RNN
+            that must be changed/deleted later and be processed in the tree LSTM
+        """
+        def parents_children(tree, sequencelength):
+            """
+            extracts all parents with its children from given AST
+            :param tree: 2b-extracted python AST
+            :returns: 2 lists that represent list of all children for parent at same index
+            """
+            parents = []
+            children = []
+            for node in ast.walk(tree):
+                loc_children = []
+                loc_children_ast = ast.iter_child_nodes(node)
+                # test if node is branch, if yes then its ignored
+                for child_ast in loc_children_ast:
+                    loc_children.append(child_ast.__class__.__name__)
+                if not len(loc_children) == 0:
+                    parents.append(node.__class__.__name__)
+
+                    # make children list sized 5 so it works with lstm fix input length
+                    # im sorry for everyone who has to see this
+                    while len(loc_children) < sequencelength:
+                        loc_children.append("")
+
+                    children.append(loc_children)
+
+            return [parents, children]
+        # collect parent children pairs first
+        all_parents = []
+        all_children = []
+        for tree in datasets:
+            parents, chilren = parents_children(tree, self.in_len)
+            all_parents.extend(parents)
+            all_children.extend(chilren)
+        return [all_parents, all_children]
+
+
+class TreeLSTMDefect:
+    """
+    The actual TreeLSTM Module training and testing processes for DefectPrediction.
+    with the help of a TreeLSTM it will be able to do defect predictions for one file(one AST)
+    """
+
+    def __init__(self, pipeline):
+        """
+        :param pipeline: holds all necessary information for nnsimulation
+        """
+        # global dictionary
+        self.dictionary = pipeline.dictionary
+        # vector length
+        self.emb_dim = len(pipeline.emb_matrix[0])
+        self.emb_matrix = pipeline.emb_matrix
+        # embedding matrix as lookup table
+        self.emb_matrix_look = nn.LookupTable(
+            len(pipeline.emb_matrix), self.emb_dim)
+        self.emb_matrix_look.weight = self.emb_matrix
+        # length of input sequence for RNN
+        self.in_len = 3
+
+        # lstm properties
+        # memory dimension
+        self.mem_dim = 150
+        # learning rate
+        self.learning_rate = 0.05
+        # word vector embedding learning rate
+        self.emb_learning_rate = 0.0
+        # minibatch size
+        self.batch_size = 25
+        # regulation strength
+        self.reg = 1e-4
+        # simulation module hidden dimension
+        self.sim_nhidden = 50
+
+        # optimization configuration
+        self.optim_state = {self.learning_rate}
+
+        # negative log likeligood optimization objective
+        self.criterion = nn.ClassNLLCriterion()
+
         '''
         self.etree_lstm = etree.ETreeLSTM(self)
         try:
@@ -364,54 +425,47 @@ class NNSimulation:
             self.params = self.grad_params = torch.zeros(1)
         '''
 
-    def run(self, train, test):
-        """
-        temporary run for RNN; calls run function of RNN
-        TODO delete when TreeLSTM is included
-        """
-        self.lstm.run(train, test)
-
-    def train_datasets(self, dataset_def, dataset_cln):
+    def train_datasets(self, dataset_def, dataset_cln, test_cln):
         """
         training for the TreeLSTM
-
-        trains upon clean datasets
-        TODO training on defective datasets
-        :param dataset_def: dataset containing defective asts
-        :param dataset_cln: dataset containing clean asts
         """
-        self.train_clean(dataset_cln)
 
-    def train_clean(self, trees):
+    def train_clean(self, dataset_cln, test_cln):
         """
+        trains and tests TreeLSTM with clean datafiles
+        TODO in TreeLSTM
         consists of 3 steps for a tree:
             - recursively (from branch) walk over children and let them predict the parent node
             - Compare the prediction with actual node
             - adjust weights of model so that the difference is minimal
+
+        :param dataset_cln: dataset containing clean training asts
+        :param test_cln: dataset containing clean test asts
+        :returns: void; saves best model in folder
         """
 
     def predict_parent(self, children):
         """
         predicting parent node based on child nodes
-        :param children: list of children nodes
-        :returns: most likely parent node
+        : param children: list of children nodes
+        : returns: most likely parent node
         """
         pass
 
     def predict(self, tree):
         """
         predicting defectiveness of a file/tree
-        :param tree: 2b-evaluated abstract sytax tree
-        :returns: likelihood of defectiveness 0-1
+        : param tree: 2b-evaluated abstract sytax tree
+        : returns: likelihood of defectiveness 0-1
         """
         pass
 
     def predict_def_datasets(self, dataset_def, dataset_cln):
         """
         iterates over data and calculates the overall correctness of predictions
-        :param dataset_def: dataset containing defective asts
-        :param dataset_cln: dataset containing clean asts
-        :returns: overall precision of Network 0-1
+        : param dataset_def: dataset containing defective asts
+        : param dataset_cln: dataset containing clean asts
+        : returns: overall precision of Network 0-1
         """
         pass
 
@@ -426,8 +480,8 @@ class NNSimulation:
         Process of one LSTM unit.
         Recursively calls learning processes on all children in one tree
 
-        :param ast_node: one Python AST node; First call will be with root Node
-        :returns: hidden state and context of node; eventually for the whole AST
+        : param ast_node: one Python AST node; First call will be with root Node
+        : returns: hidden state and context of node; eventually for the whole AST
         """
         weight = torch.tensor([])  # TODO weights with lstm calculation!!
         w_t = ast2vec(ast_node, self.dictionary,
@@ -463,7 +517,7 @@ class NNSimulation:
     def train_clean_trash(self, trees):
         """
         consists of 3 steps for a tree:
-            - recursively (from branch) walk over children and let them predict the parent node
+            - recursively(from branch) walk over children and let them predict the parent node
             - Compare the prediction with actual node
             - adjust weights of model so that the difference is minimal
         """

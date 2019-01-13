@@ -19,8 +19,8 @@ class RNN_Example():
         self.dict = config.dictionary
         self.batch_size = config.batch_size
         self.epochs = 10
-        self.input_length = 5  # TODO
-        self.output_length = 1
+        self.input_length = config.emb_dim*config.in_len  # TODO
+        self.output_length = config.emb_dim
         self.dict_size = len(self.dict)
         self.saved_path = "/home/emil/Documents/DeepLearningProject/PaperImplementation/DeepLearningPipelines/workspace/dump"
         self.saved_file = os.path.join(self.saved_path, "best_trained_model")
@@ -46,12 +46,14 @@ class RNN_Example():
         """
         # Training and Testing data will look like a 2 dim array
         # where each index holds corresponding in [0] to output [1]
-        training_input = train[1][0]
-        training_output = train[0][0]
+        training_input = train[1]
+        print("Training IN RNN\n", training_input)
+        training_output = train[0]
+        print("Training OUT RNN\n", training_output)
         validating_input = training_input
         validating_output = training_output
-        testing_input = test[1][0]
-        testing_output = test[0][0]
+        testing_input = test[1]
+        testing_output = test[0]
 
         # Used to compare with accuracy of model
         best_accuracy = 0.0
