@@ -51,19 +51,55 @@ class RNNDefect():
         # negative log likeligood optimization objective
         self.criterion = nn.ClassNLLCriterion()
 
-        # initialize model
+        # models
+        # initialize code learning model
         self.rnn = rnn.RNN_Example(self)
+        # initialize classification model
 
     def train_datasets(self, dataset_def, dataset_cln, test_cln):
         """
-        training for RNN
-        trains upon clean datasets
-        TODO training on defective datasets?
+        training for defect prediction
+
+        ! consists of 2 main training steps:
+        1 training RNN to learn how code should look like
+        2 training a classifier with labeled(clean/defective) code
+
         :param dataset_def: dataset containing defective asts
         :param dataset_cln: dataset containing clean asts
         :param test_cln: dataset containing clean test asts
         """
+        # training rnn
         self.train_clean(dataset_cln, test_cln)
+        # training classifier
+        self.train_pred(dataset_def, dataset_cln)
+
+    def predict(self, test):
+        """
+        calls testdata upon RNN to obtain accuracy.
+        the accuracy will be classified to find out how defective files can be
+        :param test: testdata whose defectiveness is tested
+        :returns: true if likely to be defective; false if not
+        """
+
+        def classify(accuracy):
+            """
+            classification process to determine the probability of data based on
+            NN code recunstruction accuracy
+            :param accuracy: NN code recunstruction accuracy
+            :returns: percentage of likelihood of defectiveness
+            """
+            return 1-accuracy
+
+        accuracy = self.rnn.test_network(test)# TODO couldnt ork
+        bug_prob = classify(accuracy)
+        if bug_prob > 0.5:
+            return 1
+        else:
+            return 0
+
+############################### TRAINIGS #############################
+
+    # Training of RNN #
 
     def train_clean(self, dataset_cln, test_cln):
         """
@@ -75,10 +111,10 @@ class RNNDefect():
 
         TODO delete/adjust when made use of TreeLSTM
         """
-        # preparing in and outputs for neural network
-        train_in_out = self.prepare_in_out(dataset_cln)
-        test_in_out = self.prepare_in_out(test_cln)
-        print("Training IN OUT:\n", train_in_out)
+        # preparing in and outputs for recurrent neural network
+        train_in_out = self.prepare_parent_children(dataset_cln)
+        test_in_out = self.prepare_parent_children(test_cln)
+        print("Training OUT<->IN:\n", train_in_out)
         # print("Testin IN OUT:\n", test_in_out)
 
         # embedding of datasets | Makes only sense for RNN because we loose context
@@ -87,23 +123,49 @@ class RNNDefect():
         emb_test = self.embed(test_in_out)
         self.rnn.run(emb_train, emb_test)
 
-    def ast2vec(self, ast_node):
+    def prepare_parent_children(self, datasets):
         """
-        embedding of single ast node
+        creates all traing/testing/validation data in and outputs for RNN
+        :param datasets: list containing ASTs
+        :retuns: 2 dimensional list that holds list of all children for parent at same index
+                -> for all datasets
+        TODO this works without lstmcontext now because we use standard RNN
+            that must be changed/deleted later and be processed in the tree LSTM
+        """
+        
+        # collect parent children pairs first
+        all_parents = []
+        all_children = []
+        for tree in datasets:
+            parents, chilren = self.parents_children(tree, self.in_len)
+            all_parents.append(parents)
+            all_children.extend(chilren)
+        return [all_parents, all_children]
 
-        :param ast_token: 2b-embedded ast  ast_node
-        :param dictionary: dictionary of datatokens
-        :param embed_matrix: embedding material
-        :returns: vector representation of ast
-        """
-        # find index first
-        if ast_node in self.dictionary:
-            index = self.dictionary.index(ast_node)
-        else:
-            # last element in dictionary is Unknown type; equals dictionary.index("UNK")
-            index = len(self.dictionary)-1
-        # lookup index in embedding matrix
-        return self.emb_matrix[index]
+    def parents_children(self, tree, sequencelength):
+            """
+            extracts all parents with its children from given AST
+            :param tree: 2b-extracted python AST
+            :returns: 2 lists that represent list of all children for parent at same index
+            """
+            parents = []
+            children = []
+            for node in ast.walk(tree):
+                loc_children = []
+                loc_children_ast = ast.iter_child_nodes(node)
+                # test if node is branch, if yes then its ignored
+                for child_ast in loc_children_ast:
+                    loc_children.append(child_ast.__class__.__name__)
+                if not len(loc_children) == 0:
+                    parents.append(node.__class__.__name__)
+
+                    # im sorry for everyone who has to see this
+                    while len(loc_children) < sequencelength:
+                        loc_children.append("")
+
+                    children.append(loc_children)
+
+            return [parents, children]
 
     def embed(self, datasets):
         """
@@ -132,69 +194,33 @@ class RNNDefect():
         embedded_datasets.append(all_children)
         return embedded_datasets
 
-    def prepare_in_out(self, datasets):
+    def ast2vec(self, ast_node):
         """
-        creates all traing/testing/validation data in and outputs for NN
-        :param datasets: list containing ASTs
-        :retuns: 2 dimensional list that holds list of all children for parent at same index
-                -> for all datasets
-        TODO this works without lstmcontext now because we use standard RNN
-            that must be changed/deleted later and be processed in the tree LSTM
+        embedding of single ast node
+
+        :param ast_token: 2b-embedded ast  ast_node
+        :param dictionary: dictionary of datatokens
+        :param embed_matrix: embedding material
+        :returns: vector representation of ast
         """
-        def parents_children(tree, sequencelength):
-            """
-            extracts all parents with its children from given AST
-            :param tree: 2b-extracted python AST
-            :returns: 2 lists that represent list of all children for parent at same index
-            """
-            parents = []
-            children = []
-            for node in ast.walk(tree):
-                loc_children = []
-                loc_children_ast = ast.iter_child_nodes(node)
-                # test if node is branch, if yes then its ignored
-                for child_ast in loc_children_ast:
-                    loc_children.append(child_ast.__class__.__name__)
-                if not len(loc_children) == 0:
-                    parents.append(node.__class__.__name__)
-
-                    # make children list sized 5 so it works with lstm fix input length
-                    # im sorry for everyone who has to see this
-                    while len(loc_children) < sequencelength:
-                        loc_children.append("")
-
-                    children.append(loc_children)
-
-            return [parents, children]
-        # collect parent children pairs first
-        all_parents = []
-        all_children = []
-        for tree in datasets:
-            parents, chilren = parents_children(tree, self.in_len)
-            all_parents.extend(parents)
-            all_children.extend(chilren)
-        return [all_parents, all_children]
-
-    def predict(self, test):
-        """
-        calls testdata upon RNN to obtain accuracy.
-        the accuracy will be classified to find out how defective files can be
-        :param test: testdata whose defectiveness is tested
-        :returns: true if likely to be defective; false if not
-        """
-        accuracy = self.rnn.test_network(test)
-        bug_prob = self.classify(accuracy)
-        if bug_prob > 0.5:
-            return 1
+        # find index first
+        if ast_node in self.dictionary:
+            index = self.dictionary.index(ast_node)
         else:
-            return 0
+            # last element in dictionary is Unknown type; equals dictionary.index("UNK")
+            index = len(self.dictionary)-1
+        # lookup index in embedding matrix
+        return self.emb_matrix[index]
 
-    def classify(self, accuracy):
+    #Training the classification #
+
+    def train_pred(self, def_data, cln_data):
         """
-        classification process to determine the probability of data based on
-        NN code recunstruction accuracy
-        :param accuracy: NN code recunstruction accuracy
-        :returns: percentage of likelihood of defectiveness
-        TODO
+        trains module's classifier with 2 types of data
+        :param def_data: defective labled data
+        :param cln_data: clean labled data
+        :returns: void; saves best model in folder
         """
-        return 1-accuracy
+        # list containing accuracies as inputs for log regression
+        cln_in_out = self.prepare_parent_children(cln_data)
+

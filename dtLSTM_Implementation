@@ -31,15 +31,24 @@ A deep tree based model for software defect prediction - Self Implementation
 
 
 => In order to understand the overall Functionality of the paper LUA TreeLSTM will be put aside for now, so the NN process will be simulated by an RNN and extended lateron
-	
-Future Steps:
-1. Include dummy RNN
-2. Adjust Basic Training and Predicting
-3. Expand Data Crawling and management (PROMISE Dataset)
-4. Include TreeLSTM
-5. Manage Embedding Training
 
-Explicit Steps/Comments:
+
+
+Future Steps for only Implementation:
+(*)- Include dummy RNN (note: doesnt yet really run)
+(X)- Adjust RNN Training and Predicting
+( )- Research and add classification training
+( )- Manage Embedding Training??
+( )- Include TreeLSTM
+	( )- Build and Understand TreeLSTM (ChildSum?)
+	( )- Adjust Training and Predicting
+
+Future Steps for after connecting it to COGE™
+( )- Expanding data crawlings (PROMISE Dataset)
+
+
+
+Explicit Comments:
 - Defect Prediction done like the training, i.e. all child nodes of an AST are being input into the lstm and the each parent node is being predicted.
 	+ Defect Prediction now becomes basically the accuracy calculation of test data
 	+/- This process is now directly connected to the accuracy of the LSTM 
