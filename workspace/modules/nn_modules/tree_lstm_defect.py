@@ -10,7 +10,7 @@ import torch.legacy.nn as nn
 class TreeLSTMDefect:
     """
     The actual TreeLSTM Module training and testing processes for DefectPrediction.
-    with the help of a TreeLSTM it will be able to do defect predictions for one file(one AST)
+    with the instanciation of a TreeLSTM it will be able to do defect predictions for one file(one AST)
     """
 
     def __init__(self, pipeline):

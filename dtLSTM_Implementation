@@ -35,6 +35,7 @@ A deep tree based model for software defect prediction - Self Implementation
 
 
 Future Steps for only Implementation:
+(X)- Understanding/Adapting actual Prediction Model
 (*)- Include dummy RNN (note: doesnt yet really run)
 (X)- Adjust RNN Training and Predicting
 ( )- Research and add classification training

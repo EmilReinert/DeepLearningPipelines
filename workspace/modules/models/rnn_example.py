@@ -26,12 +26,12 @@ class RNN_Example():
         self.saved_file = os.path.join(self.saved_path, "best_trained_model")
         # TODO: current model not taking sequences of token, only 1 token
 
-    def run(self, train, test):
+    def run(self, train_in, train_out, test_in, test_out):
 
-        self.train_network(train, test)
+        self.train_network(train_in, train_out, test_in, test_out)
         return list(self.predict_testing_output.numpy())
 
-    def train_network(self, train, test):
+    def train_network(self, train_in, train_out, test_in, test_out):
         """
         Train network.
 
@@ -46,14 +46,15 @@ class RNN_Example():
         """
         # Training and Testing data will look like a 2 dim array
         # where each index holds corresponding in [0] to output [1]
-        training_input = train[1]
+        # print("TRAINING IN OUT:", train)
+        training_input = train_in
         print("Training IN RNN\n", training_input)
-        training_output = train[0]
+        training_output = train_out
         print("Training OUT RNN\n", training_output)
-        validating_input = training_input
-        validating_output = training_output
-        testing_input = test[1]
-        testing_output = test[0]
+        validating_input = train_in
+        validating_output = train_out
+        testing_input = test_in
+        testing_output = test_out
 
         # Used to compare with accuracy of model
         best_accuracy = 0.0
@@ -156,7 +157,7 @@ class RNN_Example():
             best_model.load_state_dict(torch.load(self.saved_file))
         except:
             FileNotFoundError
-            print("can't save best model because there is none")
+            print("can't load best model because there is none")
 
         accuracy = self.access_model(model=best_model,
                                      data_loader=test_loader,
@@ -224,7 +225,7 @@ class RNN_Example():
 
         if mode == "test":
             raccuracy = np.around(accuracy, decimals=3)
-            print("Best Model. Loss: ", loss, " Accuracy: ", raccuracy)
+            # print("Best Model. Loss: ", loss, " Accuracy: ", raccuracy)
             # for defectiveness prediction
         return accuracy
 

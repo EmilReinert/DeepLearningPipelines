@@ -146,6 +146,20 @@ def random_embed(dictionary, vector_length):
         e_mat.append(e_vec)
     return e_mat
 
+def one_hot(dictionary):
+    """
+    embeds dictionary with one hot vectors : zero vector with 1 at specified position
+
+    :param dictionary: 2b-embedded dictionary
+    :returns: embedded dictionary as matrix
+    """
+    e_mat = []
+    for mi in range(len(dictionary)):
+        e_vec = [0 for i in range(len(dictionary))]
+        e_vec[mi] = 1
+        e_mat.append(e_vec)
+    return e_mat
+
 
 class DefectPrediction:  # main pipeline
     """
@@ -166,7 +180,7 @@ class DefectPrediction:  # main pipeline
         self.raw_data_test = data_test
         # vocabulary/dictionary size
         self.voc_size = 100
-        self.vec_length = 3
+        self.vec_length = 3 # = voc size for one hot
 
     def run(self):
         """
@@ -199,7 +213,7 @@ class DefectPrediction:  # main pipeline
 
     # EMBEDDING ########### TODO learning?
         # random embedding of dictionary; as initializing!
-        self.emb_matrix = random_embed(self.dictionary, self.vec_length)
+        self.emb_matrix = one_hot(self.dictionary)
         # print("Embedding Matrix:\n", self.emb_matrix)
 
     # NEURAL NETWORK ########### TODO
