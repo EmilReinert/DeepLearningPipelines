@@ -38,12 +38,12 @@ class LogisticRegression:
         else:
             self.epochs = 50
             self.learning_rate = 0.01
-        self.T = 0 #treshold
+        self.T = 0  # treshold
 
     def train(self, X, Y):
-        #not really training, just finign average threshold
-        d_0 = [] # cln should have higher accuracies
-        d_1 = [] # def
+        # not really training, just finign average threshold
+        d_0 = []  # cln should have higher accuracies
+        d_1 = []  # def
         for i in range(len(X)):
             if Y[i] == 0:
                 d_0.append(X[i])
@@ -54,9 +54,8 @@ class LogisticRegression:
         m_0 = np.average(d_0)
         m_1 = np.average(d_1)
         diff = m_0-m_1
-        self.T = m_1+ diff*(len(d_1)/len(X))
-        #print(self.T)
-        
+        self.T = m_1 + diff*(len(d_1)/len(X))
+        print("Regression performed. Threshold: ",self.T)
 
     def test(self, X):
         """
@@ -64,7 +63,7 @@ class LogisticRegression:
         :param X: 2b-predicting float input
         :returns: true or false (for defect prediction true if defective)
         """
-        if X>self.T:
-            return 0#not buggy
+        if X > self.T:
+            return 0  # not buggy
         else:
             return 1

@@ -6,7 +6,7 @@ import random
 import torch
 import torch.legacy.nn as nn
 import modules.models.rnn_example as rnn
-import sklearn.linear_model as lm
+import modules.models.logistic_regression as logi
 import numpy as np
 
 
@@ -33,31 +33,14 @@ class RNNDefect():
         # length of input sequence for RNN
         self.in_len = 5
 
-        # rnn properties
-        # memory dimension
-        self.mem_dim = 150
-        # learning rate
-        self.learning_rate = 0.05
-        # word vector embedding learning rate
-        self.emb_learning_rate = 0.0
         # minibatch size
-        self.batch_size = 25
-        # regulation strength
-        self.reg = 1e-4
-        # simulation module hidden dimension
-        self.sim_nhidden = 50
-
-        # optimization configuration
-        self.optim_state = {self.learning_rate}
-
-        # negative log likeligood optimization objective
-        self.criterion = nn.ClassNLLCriterion()
+        self.batch_size = 16
 
         # models
         # initialize code learning model
         self.rnn = rnn.RNN_Example(self)
         # initialize classification model
-        self.log_reg = lm.LogisticRegression()
+        self.log_reg = logi.LogisticRegression()
 
     def train_datasets(self, dataset_def, dataset_cln, test_cln):
         """
@@ -76,7 +59,7 @@ class RNNDefect():
         # training classifier
         self.train_pred(dataset_def, dataset_cln)
 
-    def predict(self, test):
+    def predict(self, test_file):
         """
         calls testdata upon RNN to obtain Reconstruction accuracy.
         the Reconstruction accuracy will be classified to find out how defective files can be
@@ -89,17 +72,16 @@ class RNNDefect():
             classification process to determine the probability of data based on
             NN code recunstruction accuracy
             :param accuracy: NN code recunstruction accuracy
-            :returns: percentage of likelihood of defectiveness
+            :returns: percentage /likelihood of defectiveness
             """
-            return 1-accuracy  # test classifier
+            return self.log_reg.test(accuracy)  # test classifier
 
-        accuracy = self.rnn.test_network(
-            self.parents_children(test, self.in_len))  # TODO input weird
+        test_out, test_in = self.prepare_all_parents_children(test_file)
+        emb_test_out, emb_test_in = self.embed(test_out, test_in)
+        print(emb_test_in, emb_test_out)
+        accuracy = self.rnn.test_network(emb_test_in, emb_test_out)
         bug_prob = classify(accuracy)
-        if bug_prob > 0.5:
-            return 1
-        else:
-            return 0
+        return bug_prob
 
 ############################### TRAINIGS #############################
 
@@ -116,18 +98,19 @@ class RNNDefect():
         TODO delete/adjust when made use of TreeLSTM
         """
         # preparing in and outputs for recurrent neural network
-        train_out, train_in = self.prepare_parents_children(dataset_cln)
-        test_out, test_in = self.prepare_parents_children(test_cln)
+        train_out, train_in = self.prepare_all_parents_children(dataset_cln)
+        test_out, test_in = self.prepare_all_parents_children(test_cln)
 
         # embedding of datasets | Makes only sense for RNN because we loose context
         emb_train_out, emb_train_in = self.embed(train_out, train_in)
         # print("Embedded Training IN OUT\n", emb_train)
         emb_test_out, emb_test_in = self.embed(test_out, test_in)
-        self.rnn.run(emb_train_in, emb_train_out, emb_test_in, emb_test_out)
+        self.rnn.train_network(emb_train_in, emb_train_out)
 
-    def prepare_parents_children(self, datasets):
+    def prepare_all_parents_children(self, datasets):
         """
-        creates all traing/testing/validation data in and outputs for RNN
+        creates all training data in and outputs for RNN:
+        extracts all parents and children and retruns them in 2 combined lists
         :param datasets: list containing ASTs
         :retuns: 2 dimensional list that holds list of all children for parent at same index
                 -> for all datasets
@@ -223,29 +206,31 @@ class RNNDefect():
     def train_pred(self, def_data, cln_data):
         """
         trains module's classifier with 2 types of data
-        :param def_data: defective labled data
-        :param cln_data: clean labled data
+        :param def_data: defective labled datafiles 
+        :param cln_data: clean labled datafiles
         :returns: void; saves best model in folder
         """
         # obtaining lists containing reconstruction accuracies as inputs for log regression
-        # TODO were creating a lot of subtree of each ast (both inputs to this point have only one ast)
-        def_in_out = self.parents_children(def_data[0], self.in_len)
-        cln_in_out = self.parents_children(cln_data[0], self.in_len)
-        def_in = []
-        cln_in = []
-        # TODO rn were working with subtrees / that shouldnt stay like that because not all subtrees are defective
-        # BUT its interesting because it looks at the internal ast structure - but maybe that should happen in the NN
-        for i in range(len(def_in_out[0])):
-            # dimension 0 is parents and 1 are children
-            def_in.append(self.rnn.test_network(
-                [def_in_out[0][i], def_in_out[1][i]]))
-        for i in range(len(cln_in_out[0])):
-            # dimension 0 is parents and 1 are children
-            cln_in.append(self.rnn.test_network(
-                [cln_in_out[0][i], cln_in_out[1][i]]))
-        print("Defective Reconstruction Accuracies\n", def_in)
-        print("Clean Reconstruction Accuracies\n", cln_in)
+        acc_def_in = []
+        acc_cln_in = []
+        for def_file in def_data:
+            def_out, def_in = self.prepare_all_parents_children([def_file])
+
+            emb_def_out, emb_def_in = self.embed(def_out, def_in)
+            #print(emb_def_in, emb_def_out)
+            acc_def_in.append(self.rnn.test_network(
+                emb_def_in, emb_def_out))
+        for cln_file in cln_data:
+            cln_out, cln_in = self.prepare_all_parents_children([cln_file])
+
+            emb_cln_out, emb_cln_in = self.embed(cln_out, cln_in)
+            acc_cln_in.append(self.rnn.test_network(
+                emb_cln_in, emb_cln_out))
+        print("Defective Reconstruction Accuracies\n", acc_def_in)
+        print("Clean Reconstruction Accuracies\n", acc_cln_in)
         # inputs and outputs for logistic regression
-        X = def_in + cln_in
-        Y = [0 for i in range(cln_in)]+[1 for i in range(def_in)]
+        X = acc_def_in + acc_cln_in
+        Y = [0 for i in range(len(acc_cln_in))] + \
+            [1 for i in range(len(acc_def_in))]
         # TODO TRAIN
+        self.log_reg.train(X, Y)

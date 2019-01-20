@@ -18,20 +18,20 @@ class RNN_Example():
     def __init__(self, config):
         self.dict = config.dictionary
         self.batch_size = config.batch_size
-        self.epochs = 10
-        self.input_length = config.emb_dim*config.in_len  # TODO
-        self.output_length = config.emb_dim
+        self.epochs = 500
+        self.input_length = 10
+        self.output_length = 1
         self.dict_size = len(self.dict)
         self.saved_path = "/home/emil/Documents/DeepLearningProject/PaperImplementation/DeepLearningPipelines/workspace/dump"
         self.saved_file = os.path.join(self.saved_path, "best_trained_model")
         # TODO: current model not taking sequences of token, only 1 token
 
-    def run(self, train_in, train_out, test_in, test_out):
+    def run(self, train_in, train_out):
 
-        self.train_network(train_in, train_out, test_in, test_out)
+        self.train_network(train_in, train_out)
         return list(self.predict_testing_output.numpy())
 
-    def train_network(self, train_in, train_out, test_in, test_out):
+    def train_network(self, train_in, train_out):
         """
         Train network.
 
@@ -44,17 +44,11 @@ class RNN_Example():
         :param datasets: list of input/output sets,
         :returns: none
         """
-        # Training and Testing data will look like a 2 dim array
-        # where each index holds corresponding in [0] to output [1]
-        # print("TRAINING IN OUT:", train)
+
         training_input = train_in
-        print("Training IN RNN\n", training_input)
         training_output = train_out
-        print("Training OUT RNN\n", training_output)
         validating_input = train_in
         validating_output = train_out
-        testing_input = test_in
-        testing_output = test_out
 
         # Used to compare with accuracy of model
         best_accuracy = 0.0
@@ -69,14 +63,12 @@ class RNN_Example():
         # Datasets contain some specific functions to adapt nn in Pytorch
         train_data = Datasets(training_input, training_output)
         valid_data = Datasets(validating_input, validating_output)
-        test_data = Datasets(testing_input, testing_output)
 
         # DataLoader used to load data equal to batch_size
         train_loader = DataLoader(train_data, **params)
         valid_loader = DataLoader(valid_data, **params)
-        test_loader = DataLoader(test_data, **params)
 
-        model = RNN(training_data=training_input, dict_size=self.dict_size)
+        model = RNN(training_data=train_in, dict_size=self.dict_size)
 
         # Check if computer have graphic card,
         # model will be trained py GPU instead of CPU
@@ -119,47 +111,33 @@ class RNN_Example():
             # validate this model at the end of each epoch
             self.access_model(
                 model=model,
-                data_loader=test_loader,
-                access_data=test_data,
+                data_loader=valid_loader,
+                access_data=valid_data,
                 criterion=self.criterion,
                 num_iter=self.num_iter,
                 epoch=epoch,
                 best_accuracy=best_accuracy)
+        
+        self.test_network(train_in, train_out)
 
-        try:
-            model.load_state_dict(torch.load(self.saved_file))
-        except:
-            FileNotFoundError
-            print("can't save best model because there is none")
-
-        self.access_model(model=model,
-                          data_loader=test_loader,
-                          access_data=test_data,
-                          criterion=self.criterion,
-                          mode="test",
-                          num_iter=self.num_iter)
-
-    def test_network(self, test_data):
+    def test_network(self, test_in, test_out):
         """
-        separated training of
+        testing of pretrained network
         :param test_data: data 2b tested with current/best model
         :returns: accuracy
         """
+        testing_input = test_in
+        testing_output = test_out
         params = {
             "batch_size":   self.batch_size,
             "shuffle": True,
             "drop_last": True
         }
+        test_data = Datasets(testing_input, testing_output)
         test_loader = DataLoader(test_data, **params)
-
-        try:
-            best_model = RNN([], self.dict_size)
-            best_model.load_state_dict(torch.load(self.saved_file))
-        except:
-            FileNotFoundError
-            print("can't load best model because there is none")
-
-        accuracy = self.access_model(model=best_model,
+        model = RNN([], dict_size=self.dict_size)
+        model.load_state_dict(torch.load(self.saved_file))
+        accuracy = self.access_model(model=model,
                                      data_loader=test_loader,
                                      access_data=test_data,
                                      criterion=self.criterion,
@@ -218,15 +196,15 @@ class RNN_Example():
         loss = sum(loss_list) / access_data.__len__()
         accuracy = sum(accuracy_list) / access_data.__len__()
 
-        loss = np.around(loss, decimals=3)
+        # loss = np.around(loss[0].numpy(), decimals=3)
         if mode == "validate":
             print("Epoch ", epoch+1, "/", self.epochs, ". Validation Loss: ",
                   loss, " Validation Accuracy: ", np.around(accuracy, decimals=3))
 
         if mode == "test":
-            raccuracy = np.around(accuracy, decimals=3)
-            # print("Best Model. Loss: ", loss, " Accuracy: ", raccuracy)
-            # for defectiveness prediction
+            print("Testing Data with Best Model. Loss: ", loss, " Accuracy: ",
+                  np.around(accuracy, decimals=3))
+
         return accuracy
 
 
